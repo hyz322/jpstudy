@@ -1,4 +1,4 @@
-// 页面渲染与交互：首页、学习、变形查询、刷题、复习本、设置。
+// 页面渲染与交互：首页、学习、变形查询、刷题、复习本、设置（单词页面在 words_ui.js）。
 (function () {
   const U = JP.util;
   const C = JP.conj;
@@ -11,7 +11,7 @@
   const VERBS = JP.verbs.map(C.toVerb);
   const findVerb = (kanji) => VERBS.find((v) => v.kanji === kanji);
   const LETTERS = ["A", "B", "C", "D", "E"];
-  const SUBJECTS = { verb: "动词", particle: "助词" };
+  const SUBJECTS = { verb: "动词", particle: "助词", word: "单词" };
   const subjOf = (x) => x.subject || "verb";
   const handOf = (subj) => JP.questions.filter((q) => subjOf(q) === subj);
 
@@ -26,7 +26,8 @@
     $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === page));
     document.onkeydown = null;
     window.scrollTo(0, 0);
-    ({ home: renderHome, learn: renderLearn, lookup: renderLookup, particles: renderParticles, practice: renderPractice, review: renderReview, settings: renderSettings }[page] || renderHome)(arg);
+    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    ({ home: renderHome, learn: renderLearn, lookup: renderLookup, particles: renderParticles, practice: renderPractice, review: renderReview, settings: renderSettings, ...JP.pages }[page] || renderHome)(arg);
   }
   window.addEventListener("hashchange", route);
 
@@ -36,10 +37,11 @@
     const tries = hist.reduce((a, h) => a + h.tries, 0);
     const right = hist.reduce((a, h) => a + h.right, 0);
     main.innerHTML = `
-      <div class="hero"><h1>${R("{動詞|どうし}と{助詞|じょし}をマスターしよう")}</h1>
-        <div class="muted">动词：分类、变形、敬语 · 助词：格助词、は/が、复合格助词 · 讲义 + 分级刷题</div></div>
+      <div class="hero"><h1>${R("{動詞|どうし}・{助詞|じょし}・{単語|たんご}をマスターしよう")}</h1>
+        <div class="muted">动词：分类、变形、敬语 · 助词：格助词、は/が、复合格助词 · 单词：读音、例句、联想记忆、词源拆解 · 讲义 + 分级刷题</div></div>
       <div class="home-grid">
         <a class="card home-card" href="#learn"><div class="icon">📖</div><h3>学习</h3><div class="muted">动词 ${JP.lessons.filter((l) => subjOf(l) === "verb").length} 课 + 助词 ${JP.lessons.filter((l) => subjOf(l) === "particle" && l.level).length} 课，另有 ${JP.particleUsages.length} 个助词的用法总表</div></a>
+        <a class="card home-card" href="#words"><div class="icon">🗂️</div><h3>单词</h3><div class="muted">N5 ${JP.words.length} 词：读音、例句、联想记忆、词源拆解，另有单词卡片和单词测验</div></a>
         <a class="card home-card" href="#lookup"><div class="icon">🔍</div><h3>变形查询</h3><div class="muted">输入任意动词，查看全部变形和规则</div></a>
         <a class="card home-card" href="#practice"><div class="icon">✍️</div><h3>刷题</h3><div class="muted">动词 ${handOf("verb").length} 题 + 助词 ${handOf("particle").length} 题精编句子题，另有变形题、搭配题，五个难度</div></a>
         <a class="card home-card" href="#particles"><div class="icon">🧩</div><h3>助词查询</h3><div class="muted">${JP.particleUsages.length} 个助词、${JP.particleUsages.reduce((a, e) => a + e.usages.length, 0)} 种用法，可按关键词搜索</div></a>
@@ -281,23 +283,25 @@
         <dt>正确答案</dt><dd class="ja">${corr}</dd>
         <dt>中文</dt><dd>${R(q.zh || "")}</dd>
       </dl>
-      <div class="explain">${R(q.explain || "")}</div>
+      <div class="explain">${R(q.explain || "")}${q.wordId ? `<div><a href="#words/${encodeURIComponent(q.wordId)}">查看单词详情 →</a></div>` : ""}</div>
       ${note ? `<div class="note-view">📝 ${U.escape(note)}</div>` : ""}
     </div>`;
   }
 
   // ============================ 笔记弹窗 ============================
-  function openNote(q, onSaved) {
+  function noteModal(html, text, save, onSaved) {
     const m = $("#modal");
-    $("#modal-q").innerHTML = R(q.q);
-    $("#modal-text").value = S.note(q.id);
+    $("#modal-q").innerHTML = html;
+    $("#modal-text").value = text;
     m.classList.remove("hidden");
     $("#modal-text").focus();
     const close = () => m.classList.add("hidden");
     $("#modal-cancel").onclick = close;
-    $("#modal-save").onclick = () => { S.setNote(q, $("#modal-text").value); close(); onSaved && onSaved(); };
-    $("#modal-del").onclick = () => { S.setNote(q, ""); close(); onSaved && onSaved(); };
+    $("#modal-save").onclick = () => { save($("#modal-text").value); close(); onSaved && onSaved(); };
+    $("#modal-del").onclick = () => { save(""); close(); onSaved && onSaved(); };
   }
+  const openNote = (q, onSaved) => noteModal(R(q.q), S.note(q.id), (t) => S.setNote(q, t), onSaved);
+  JP.ui = { $, $$, noteModal };
   function favBtn(q) {
     const on = S.isFav(q.id);
     return `<button class="btn small ${on ? "on" : ""}" data-fav>${on ? "★ 已收藏" : "☆ 收藏"}</button>`;
@@ -311,9 +315,9 @@
 
   // ============================ 刷题：设置 ============================
   function practiceCfg() {
-    return Object.assign({ subject: "verb", level: 1, source: "mix", topic: "", mode: "practice", count: 10 }, S.settings().practiceCfg || {});
+    return Object.assign({ subject: "verb", level: 1, source: "mix", topic: "", mode: "practice", count: 10, wordTopic: "", wordType: "" }, S.settings().practiceCfg || {});
   }
-  const subjectsOf = (cfg) => (cfg.subject === "mix" ? Object.keys(SUBJECTS) : [cfg.subject]);
+  const subjectsOf = (cfg) => (cfg.subject === "mix" ? ["verb", "particle"] : [cfg.subject]);
   function renderPractice() {
     const cfg = practiceCfg();
     const save = () => S.setSetting("practiceCfg", cfg);
@@ -326,21 +330,26 @@
       const genName = { verb: "变形题（自动生成，无限）", particle: "搭配题＋用法辨析题（自动出题）", mix: "变形题＋搭配题＋辨析题" }[cfg.subject];
       const noColloc = cfg.subject !== "verb" && cfg.source !== "hand" && levels.every((l) => l > 3);
       const chip = (key, val, label) => `<button class="chip ${cfg[key] === val ? "active" : ""}" data-k="${key}" data-v="${val}">${label}</button>`;
+      const W = JP.wordKit;
+      const wordFields = `<div class="field"><label>单词范围</label><select id="wtopic"><option value="">全部单词（N5 ${JP.words.length} 词）</option>
+          ${W.TOPICS.filter(([k]) => JP.words.some((w) => w.topic === k)).map(([k, n]) => `<option value="${k}" ${cfg.wordTopic === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+        <div class="field"><label>题型</label><div class="chips">${chip("wordType", "", "随机混合")}${Object.entries(JP.wdrill.TYPES).map(([k, n]) => chip("wordType", k, n)).join("")}</div>
+          <div class="hint">单词题全部由程序从词表自动出题，可以无限刷；听力题需要浏览器支持日语朗读。</div></div>`;
       main.innerHTML = `<div class="card q-card"><h2>刷题</h2>
         <div class="field"><label>科目</label><div class="chips">
-          ${chip("subject", "verb", "动词")}${chip("subject", "particle", "助词")}${chip("subject", "mix", "动词＋助词混合")}</div></div>
-        <div class="field"><label>难度</label><div class="chips">
+          ${chip("subject", "verb", "动词")}${chip("subject", "particle", "助词")}${chip("subject", "word", "单词")}${chip("subject", "mix", "动词＋助词混合")}</div></div>
+        ${cfg.subject === "word" ? wordFields : `<div class="field"><label>难度</label><div class="chips">
           ${JP.LEVELS.map((l) => chip("level", l.level, `${l.name} <span class="muted">${l.jlpt}</span>`)).join("")}${chip("level", 0, "全部混合")}</div></div>
         <div class="field"><label>题目来源</label><div class="chips">
           ${chip("source", "mix", "综合")}${chip("source", "hand", `句子题（${hand.length} 题）`)}${chip("source", "gen", genName)}</div></div>
         ${cfg.source === "hand" ? `<div class="field"><label>知识点</label><select id="topic"><option value="">全部知识点</option>
-          ${topics.map((t) => `<option ${t === cfg.topic ? "selected" : ""}>${U.escape(t)}</option>`).join("")}</select></div>` : ""}
+          ${topics.map((t) => `<option ${t === cfg.topic ? "selected" : ""}>${U.escape(t)}</option>`).join("")}</select></div>` : ""}`}
         <div class="field"><label>模式</label><div class="chips">
           ${chip("mode", "practice", "练习模式：每题立即判分讲解")}${chip("mode", "quiz", "测验模式：整组做完再看")}</div></div>
         <div class="field"><label>题量</label><div class="chips">${[10, 20, 30].map((n) => chip("count", n, `${n} 题`)).join("")}</div></div>
         <button class="btn primary" id="start">开始做题</button>
         ${noColloc ? '<p class="muted">搭配题只覆盖入门~进阶，中级、高级的助词自动题只有用法辨析题。</p>' : ""}
-        ${hand.length === 0 && cfg.source !== "gen" ? '<p class="muted">该难度暂时没有句子题，将使用自动生成的题目。</p>' : ""}
+        ${hand.length === 0 && cfg.source !== "gen" && cfg.subject !== "word" ? '<p class="muted">该难度暂时没有句子题，将使用自动生成的题目。</p>' : ""}
       </div>`;
       $$(".chip").forEach((c) => (c.onclick = () => {
         const v = c.dataset.v;
@@ -350,6 +359,8 @@
       }));
       const ts = $("#topic");
       if (ts) ts.onchange = () => { cfg.topic = ts.value; save(); };
+      const wt = $("#wtopic");
+      if (wt) wt.onchange = () => { cfg.wordTopic = wt.value; save(); };
       $("#start").onclick = () => {
         const qs = buildSet(cfg);
         if (!qs.length) return alert("没有符合条件的题目。");
@@ -359,6 +370,7 @@
     draw();
   }
   function buildSet(cfg) {
+    if (cfg.subject === "word") return JP.wdrill.generate(cfg.count, { topic: cfg.wordTopic, type: cfg.wordType });
     const levels = cfg.level ? [cfg.level] : [1, 2, 3, 4, 5];
     const subjects = subjectsOf(cfg);
     const hand = U.shuffle(JP.questions.filter((q) => levels.includes(q.level) && subjects.includes(subjOf(q)) &&
@@ -442,13 +454,15 @@
       <div class="progress"><div style="width:${((s.idx + (judged ? 1 : 0)) / s.qs.length) * 100}%"></div></div>
       <div class="q-top"><b>第 ${s.idx + 1} / ${s.qs.length} 题</b>${tagsHTML(q)}<span class="spacer"></span>
         <button class="btn small ghost" id="quit">退出</button></div>
-      <div class="stem">${R(q.q)}</div>
+      <div class="stem">${R(q.q)}${q.audio ? ` <button class="spk big" data-say="${U.escape(q.audio)}" title="朗读">${JP.wordKit.SPK_ICON}</button>` : ""}</div>
       ${body}
       ${judged && !quiz ? explainHTML(q, ans, true) : ""}
       <div class="q-actions">${actions}</div>
       ${quiz ? `<div class="q-grid">${s.qs.map((_, i) => `<button class="${answered[i] ? "done" : ""} ${i === s.idx ? "cur" : ""}" data-go="${i}">${i + 1}</button>`).join("")}</div>` : ""}
     </div>`;
     bindQuestion(q, quiz, judged);
+    JP.bindSpeak();
+    if (q.audio && !judged && s.spoken !== s.idx) { s.spoken = s.idx; JP.wordKit.speak(q.audio); }
   }
 
   function bindQuestion(q, quiz, judged) {
@@ -544,7 +558,7 @@
     const ok = isCorrect(q, ans);
     return `<div class="card item ${ok ? "" : "open"}" data-idx="${i}">
       <div class="row">${ans !== undefined ? `<b style="color:var(--${ok ? "ok" : "bad"})">${ok ? "✓" : "✗"}</b>` : ""}${tagsHTML(q)}</div>
-      <div class="stem">${R(q.q)}</div>
+      <div class="stem">${R(q.q)}${q.audio ? ` <button class="spk" data-say="${U.escape(q.audio)}" title="朗读">${JP.wordKit.SPK_ICON}</button>` : ""}</div>
       ${extra}
       <div class="detail">${explainHTML(q, ans, false)}</div>
       <div class="q-actions"><button class="btn small ghost" data-toggle>展开/收起讲解</button>${favBtn(q)}
@@ -565,6 +579,7 @@
       $("[data-toggle]", el).onclick = () => el.classList.toggle("open");
       bindQButtons(el, q, after || redraw);
     });
+    JP.bindSpeak(root);
   }
 
   // ============================ 复习本 ============================
@@ -578,10 +593,21 @@
       wrong: { name: "错题本", list: S.wrongs(), remove: (it) => S.removeWrong(it.id), removeLabel: "移出错题本" },
     };
     const tabBtn = (k, name, n) => `<button class="${reviewTab === k ? "active" : ""}" data-tab="${k}">${name}${n !== undefined ? `（${n}）` : ""}</button>`;
+    const wordIds = [...new Set([...S.wordFavs(), ...S.wordNotes()].map((x) => x.id))].filter((id) => JP.wordKit.byId(id));
     const head = `<h2>复习本</h2><div class="tabs">${tabBtn("fav", "⭐ 收藏", sources.fav.list.length)}${tabBtn("notes", "📝 笔记", sources.notes.list.length)}
-      ${tabBtn("wrong", "❌ 错题本", sources.wrong.list.length)}${tabBtn("stats", "📊 统计")}</div>`;
+      ${tabBtn("wrong", "❌ 错题本", sources.wrong.list.length)}${tabBtn("words", "🗂️ 单词本", wordIds.length)}${tabBtn("stats", "📊 统计")}</div>`;
     if (reviewTab === "stats") {
       main.innerHTML = `<div class="card">${head}${statsHTML()}</div>`;
+    } else if (reviewTab === "words") {
+      main.innerHTML = `<div class="card">${head}<p class="muted" style="margin-top:0">在单词详情页收藏或写了笔记的单词。错题本、收藏里的单词题按上面的标签查看。</p>
+        ${wordIds.length ? `<div class="row" style="margin-bottom:12px"><span class="spacer"></span><button class="btn primary" id="wb-cards">用单词卡片复习收藏的词</button></div>` : ""}
+        ${wordIds.map((id) => {
+          const w = JP.wordKit.byId(id), note = S.wordNote(id);
+          return `<div class="wb-item"><a href="#words/${encodeURIComponent(id)}" class="ja">${R(w.w)}</a><span class="muted">${U.escape(w.zh)}</span>
+            ${S.isWordFav(id) ? '<span class="star">★</span>' : ""}${note ? `<div class="note-view">📝 ${U.escape(note)}</div>` : ""}</div>`;
+        }).join("") || '<div class="empty">这里还没有内容。在单词详情页点「☆ 收藏」或「📝 写笔记」即可加入。</div>'}</div>`;
+      const wb = $("#wb-cards");
+      if (wb) wb.onclick = () => { S.setSetting("cardCfg", { ...(S.settings().cardCfg || {}), range: "fav" }); location.hash = "#cards"; };
     } else {
       const src = sources[reviewTab];
       const items = src.list.filter((it) => it.q && (!reviewLevel || it.q.level === reviewLevel) &&
@@ -617,7 +643,15 @@
   }
   function statsHTML() {
     const hist = Object.values(S.history()).filter((h) => h.q);
-    return Object.entries(SUBJECTS).map(([subj, name]) => {
+    const wh = hist.filter((h) => subjOf(h.q) === "word");
+    const wTries = wh.reduce((a, h) => a + h.tries, 0), wRight = wh.reduce((a, h) => a + h.right, 0);
+    const cards = JP.words.map((w) => S.card(w.id)).filter(Boolean);
+    const wordStats = `<h3>单词</h3><div class="stats-grid">
+      <div class="stat"><b>${cards.length} / ${JP.words.length}</b><span class="muted">卡片学过的词</span></div>
+      <div class="stat"><b>${cards.filter((c) => c.box >= S.MASTER_BOX).length}</b><span class="muted">已掌握（连续认识 ${S.MASTER_BOX} 次以上）</span></div>
+      <div class="stat"><b>${cards.filter((c) => c.due <= Date.now()).length}</b><span class="muted">到期待复习</span></div>
+      <div class="stat"><b>${wTries ? Math.round((wRight / wTries) * 100) + "%" : "—"}</b><span class="muted">单词测验正确率（${wTries} 次）</span></div></div>`;
+    return Object.entries(SUBJECTS).filter(([subj]) => subj !== "word").map(([subj, name]) => {
       const rows = JP.LEVELS.map((l) => {
         const hs = hist.filter((h) => h.q.level === l.level && subjOf(h.q) === subj);
         const tries = hs.reduce((a, h) => a + h.tries, 0);
@@ -629,7 +663,7 @@
           <td style="min-width:160px"><div class="row"><div class="bar" style="flex:1"><div style="width:${rate}%"></div></div>${tries ? rate + "%" : "—"}</div></td></tr>`;
       }).join("");
       return `<h3>${name}</h3><div class="tbl-wrap"><table><thead><tr><th>难度</th><th>句子题完成</th><th>做过的${subj === "verb" ? "变形题" : "搭配/辨析题"}</th><th>作答次数</th><th>正确率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-    }).join("");
+    }).join("") + wordStats;
   }
 
   // ============================ 设置 ============================
@@ -646,7 +680,7 @@
         <label class="btn">导入备份<input type="file" id="s-import" accept=".json,application/json" hidden></label>
         <span class="spacer"></span><button class="btn ghost" id="s-reset" style="color:var(--bad)">清空所有数据</button></div>
       <h3>关于</h3>
-      <p class="muted">句子题为参照 JLPT 题型与难度编写的原创题（动词 ${handOf("verb").length} 题、助词 ${handOf("particle").length} 题）；变形题由内置的 ${VERBS.length} 个常用动词自动生成，搭配题来自 ${JP.collocations.length} 组动词与助词的固定搭配，辨析题来自助词用法总表的例句。</p>
+      <p class="muted">句子题为参照 JLPT 题型与难度编写的原创题（动词 ${handOf("verb").length} 题、助词 ${handOf("particle").length} 题）；变形题由内置的 ${VERBS.length} 个常用动词自动生成，搭配题来自 ${JP.collocations.length} 组动词与助词的固定搭配，辨析题来自助词用法总表的例句；单词题由 ${JP.words.length} 个单词自动出题。单词的例句、联想记忆和词源拆解为原创整理，语源说法标注了可信度（构词明确 / 常见说法 / 有争议）。</p>
     </div>`;
     $("#s-furi").onchange = (e) => { S.setSetting("furigana", e.target.checked); applySettings(); };
     $("#s-romaji").onchange = (e) => S.setSetting("romaji", e.target.checked);

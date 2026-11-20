@@ -80,5 +80,35 @@
     return el.value;
   }
 
-  JP.kana = { toKana, normalize, attach, finalize };
+  // 假名 → 罗马音（赫本式，长音按字母重复写，如 コーヒー → koohii）
+  const R1 = {};
+  const H = "あいうえお かきくけこ さしすせそ たちつてと なにぬねの はひふへほ まみむめも らりるれろ がぎぐげご ざじずぜぞ だぢづでど ばびぶべぼ ぱぴぷぺぽ".split(" ");
+  const ROM = "a i u e o|ka ki ku ke ko|sa shi su se so|ta chi tsu te to|na ni nu ne no|ha hi fu he ho|ma mi mu me mo|ra ri ru re ro|ga gi gu ge go|za ji zu ze zo|da ji zu de do|ba bi bu be bo|pa pi pu pe po".split("|");
+  H.forEach((row, i) => [...row].forEach((k, j) => (R1[k] = ROM[i].split(" ")[j])));
+  Object.assign(R1, { や: "ya", ゆ: "yu", よ: "yo", わ: "wa", を: "o", ん: "n", ゔ: "vu", ぁ: "a", ぃ: "i", ぅ: "u", ぇ: "e", ぉ: "o", ゃ: "ya", ゅ: "yu", ょ: "yo", ゎ: "wa" });
+  const R2 = { しゃ: "sha", しゅ: "shu", しぇ: "she", しょ: "sho", じゃ: "ja", じゅ: "ju", じぇ: "je", じょ: "jo", ちゃ: "cha", ちゅ: "chu", ちぇ: "che", ちょ: "cho",
+    ぢゃ: "ja", ぢゅ: "ju", ぢょ: "jo", ふぁ: "fa", ふぃ: "fi", ふぇ: "fe", ふぉ: "fo", てぃ: "ti", でぃ: "di", とぅ: "tu", どぅ: "du", うぃ: "wi", うぇ: "we", うぉ: "wo",
+    ゔぁ: "va", ゔぃ: "vi", ゔぇ: "ve", ゔぉ: "vo", いぇ: "ye" };
+  "きぎにひびぴみり".split("").forEach((k) => {
+    const c = R1[k].slice(0, -1);
+    R2[k + "ゃ"] = c + "ya"; R2[k + "ゅ"] = c + "yu"; R2[k + "ょ"] = c + "yo";
+  });
+  function toRomaji(kana) {
+    const s = String(kana).replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+    let out = "", sokuon = false;
+    for (let i = 0; i < s.length; i++) {
+      const two = R2[s.slice(i, i + 2)];
+      let r = two || R1[s[i]];
+      if (two) i++;
+      if (s[i] === "っ" && !two) { sokuon = true; continue; }
+      if (s[i] === "ー") { const v = out.match(/[aiueo]$/); out += v ? v[0] : ""; continue; }
+      if (r === undefined) { out += s[i]; sokuon = false; continue; }
+      if (sokuon) { out += r.startsWith("ch") ? "t" : r[0]; sokuon = false; }
+      if (out.endsWith("n") && s[i - (two ? 2 : 1)] === "ん" && /^[aiueoy]/.test(r)) out += "'";
+      out += r;
+    }
+    return out;
+  }
+
+  JP.kana = { toKana, normalize, attach, finalize, toRomaji };
 })();

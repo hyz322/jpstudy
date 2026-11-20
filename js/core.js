@@ -4,6 +4,16 @@ window.JP = {
   addQuestions(list) {
     this.questions.push(...list);
   },
+  // 单词：每个数据文件调用一次 JP.addWords([...], "N5")
+  words: [],
+  addWords(list, jlpt) {
+    this.words.push(...list.map((w) => ({ jlpt, ...w })));
+  },
+  // 汉字表：{ 字: { on, kun, zh } }
+  kanji: {},
+  addKanji(map) {
+    Object.assign(this.kanji, map);
+  },
   LEVELS: [
     { level: 1, name: "入门", jlpt: "N5" },
     { level: 2, name: "基础", jlpt: "N5~N4" },

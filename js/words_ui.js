@@ -103,12 +103,19 @@
       </div></div>`;
     }).join("")}</div>`;
   }
+  // 联想记忆、读音记法共用：推荐的排第一，其余放在 more 提示下
+  function mnHTML(title, list, more) {
+    if (!list || !list.length) return "";
+    const ms = list.slice().sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0));
+    return `<div class="card"><h3 style="margin-top:0">${title}</h3>
+      ${ms.map((m, k) => `${k === 1 ? `<p class="muted" style="margin:14px 0 6px">${more}</p>` : ""}
+        <div class="mn ${m.best ? "best" : ""}"><span class="tag ${m.best ? "lv" : ""}">${m.best ? "推荐 · " : ""}${U.escape(m.type)}</span> ${rh(m.text)}</div>`).join("")}</div>`;
+  }
   function renderDetail(w) {
     const st = S.settings();
     const mode = st.wordGroup === "pos" ? "pos" : "topic";
     const sibs = JP.words.filter((x) => x[mode] === w[mode]);
     const i = sibs.indexOf(w), prev = sibs[i - 1], next = sibs[i + 1];
-    const mn = (w.mn || []).slice().sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0));
     const verbLink = /^verb/.test(w.pos) && JP.verbs.some((v) => v[0] === W.plain(w.w))
       ? `<a class="btn small" href="#lookup/${encodeURIComponent(W.plain(w.w))}">查看全部变形 →</a>` : "";
     const note = S.wordNote(w.id);
@@ -125,11 +132,10 @@
         ${verbLink}
         ${note ? `<div class="note-view">📝 ${U.escape(note)}</div>` : ""}
       </div>
+      ${mnHTML("读音怎么记", w.rd, "也可以这样记：")}
       <div class="card"><h3 style="margin-top:0">例句</h3>
         ${w.ex.map(([ja, zh]) => `<div class="wex"><div class="ja">${rh(ja)} ${spk(ja)}</div><div class="zh">${U.escape(zh)}</div></div>`).join("")}</div>
-      ${mn.length ? `<div class="card"><h3 style="margin-top:0">联想记忆</h3>
-        ${mn.map((m, k) => `${k === 1 ? '<p class="muted" style="margin:14px 0 6px">记不住的话，还可以这样记：</p>' : ""}
-          <div class="mn ${m.best ? "best" : ""}"><span class="tag ${m.best ? "lv" : ""}">${m.best ? "推荐 · " : ""}${U.escape(m.type)}</span> ${rh(m.text)}</div>`).join("")}</div>` : ""}
+      ${mnHTML("联想记忆", w.mn, "记不住的话，还可以这样记：")}
       ${w.parts ? partsHTML(w.parts, w) : ""}
       ${w.loan ? `<div class="card"><h3 style="margin-top:0">外来语出处</h3><p>来自${U.escape(w.loan.lang)}「<b>${U.escape(w.loan.src)}</b>」${w.loan.note ? `：${rh(w.loan.note)}` : ""}</p></div>` : ""}
       ${kanjiHTML(w)}
@@ -193,14 +199,16 @@
     }
     const w = W.byId(d.queue[0]);
     const ja = d.cfg.dir === "ja";
-    const best = (w.mn || []).find((m) => m.best) || (w.mn || [])[0];
+    const best = W.bestOf(w.mn);
+    const rd = W.bestOf(w.rd);
     const front = ja ? `<div class="card-word ja">${U.escape(W.plain(w.w))}</div>${spk(w.kana, "big")}`
       : `<div class="card-word">${U.escape(w.zh)}</div><div class="muted">${W.posName(w.pos)}</div>`;
     const back = `<div class="card-back">
       ${ja ? "" : `<div class="word-head" style="justify-content:center"><span class="big">${rh(w.w)}</span>${spk(w.kana, "big")}</div>`}
       <div><span class="ja">${U.escape(w.kana)}</span>　<span class="muted">${K.toRomaji(w.kana)}</span>　<span class="tag">${W.posName(w.pos)}</span></div>
       <div class="word-zh">${U.escape(w.zh)}</div>
-      ${best ? `<div class="mn best"><span class="tag lv">${U.escape(best.type)}</span> ${rh(best.text)}</div>` : ""}
+      ${rd ? `<div class="mn best"><span class="tag lv">读音 · ${U.escape(rd.type)}</span> ${rh(rd.text)}</div>` : ""}
+      ${best ? `<div class="mn"><span class="tag">${U.escape(best.type)}</span> ${rh(best.text)}</div>` : ""}
       ${w.ex[0] ? `<div class="wex"><div class="ja">${rh(w.ex[0][0])} ${spk(w.ex[0][0])}</div><div class="zh">${U.escape(w.ex[0][1])}</div></div>` : ""}
       <a href="#words/${encodeURIComponent(w.id)}" target="_blank">查看完整详情 ↗</a></div>`;
     main.innerHTML = `<div class="card q-card flashcard">

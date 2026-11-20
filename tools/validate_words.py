@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""校验单词数据（js/data/words_*.js）和汉字表（js/data/kanji.js）。用法：python3 tools/validate_words.py"""
+"""校验单词数据（js/data/words_*.js）和汉字表（js/data/kanji*.js）。
+用法：python3 tools/validate_words.py [--need-rd]（--need-rd：非外来语的词缺少读音记法 rd 时报错）"""
 import json
 import re
 import sys
@@ -11,6 +12,7 @@ APP = (ROOT / "js" / "words.js").read_text(encoding="utf-8")
 TOPICS = re.findall(r'\["(\w+)", "[^"]+"\]', APP.split("const POS")[0])
 POS = re.findall(r'\["(\w+)", "[^"]+"\]', APP.split("const POS")[1].split("const CERT")[0])
 CERTS = {"确定", "通说", "有争议"}
+RD_TYPES = {"语源", "拆词", "音读规律", "谐音", "联想"}
 RUBY = re.compile(r"\{([^{}|]+)\|([^{}|]+)\}")
 KANJI = re.compile(r"[一-鿿々]")
 KANA = re.compile(r"^[ぁ-ゖァ-ヺー]+$")
@@ -87,6 +89,17 @@ def main():
         for m in mn:
             if not m.get("type") or not m.get("text"):
                 err("联想记忆缺少 type 或 text")
+        rd = w.get("rd")
+        if rd is not None:
+            if not 1 <= len(rd) <= 2:
+                err("读音记法 rd 应为 1~2 条")
+            if sum(1 for m in rd if m.get("best")) != 1:
+                err("读音记法 rd 必须恰好有一条 best")
+            for m in rd:
+                if m.get("type") not in RD_TYPES or not m.get("text"):
+                    err(f"读音记法 rd 的 type 必须是 {RD_TYPES}，且要有 text")
+        elif "--need-rd" in sys.argv and not w.get("loan"):
+            err("缺少读音记法 rd")
         p = w.get("parts")
         if p:
             if p.get("cert") not in CERTS:

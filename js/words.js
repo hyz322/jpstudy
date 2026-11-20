@@ -49,6 +49,9 @@
     return !!voice || speechSynthesis.getVoices().length === 0;
   }
 
+  // 记法列表（mn / rd）里标为推荐的一条
+  const bestOf = (list) => (list || []).find((m) => m.best) || (list || [])[0];
+
   // 朗读按钮的图标（不用 emoji，各系统显示大小不一致）
   const SPK_ICON = '<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06A9 9 0 0 0 14 3.23z"/></svg>';
 
@@ -57,6 +60,6 @@
     TOPICS, POS, CERT,
     topicName: (k) => (TOPICS.find((t) => t[0] === k) || [, k])[1],
     posName: (k) => (POS.find((t) => t[0] === k) || [, k])[1],
-    plain, byId, kanjiOf, level, senses, overlap, isKanji, speak,
+    plain, byId, kanjiOf, level, senses, overlap, isKanji, speak, bestOf,
   };
 })();

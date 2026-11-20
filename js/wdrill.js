@@ -25,9 +25,11 @@
 
   function explain(w) {
     const ex = w.ex[0];
-    const best = (w.mn || []).find((m) => m.best) || (w.mn || [])[0];
+    const best = W.bestOf(w.mn);
+    const rd = W.bestOf(w.rd);
     return `${W.plain(w.w)}（${w.kana} / ${JP.kana.toRomaji(w.kana)}）：${w.zh}　〔${W.posName(w.pos)}〕` +
       (ex ? `\n例：${ex[0].replace(/<[^>]+>/g, "")}　${ex[1]}` : "") +
+      (rd ? `\n读音：${rd.text.replace(/<[^>]+>/g, "")}` : "") +
       (best ? `\n记忆：${best.text.replace(/<[^>]+>/g, "")}` : "");
   }
 
